@@ -19,8 +19,8 @@ import { ResultsTable } from './components/ResultsTable'
 const App: FC = () => {
   // --- State Management ---
   const [incomeType, setIncomeType] = useState<IncomeType>('permanent')
-  const [annualSalary, setAnnualSalary] = useState<number>('80000')
-  const [dayRate, setDayRate] = useState<number>('600')
+  const [annualSalary, setAnnualSalary] = useState<string>('80000')
+  const [dayRate, setDayRate] = useState<string>('600')
   const [weeksPerYear, setWeeksPerYear] = useState<number>(48)
   const [studentLoan, setStudentLoan] = useState<StudentLoanPlan>('none')
   const [pensionContribution, setPensionContribution] = useState<number>(5)

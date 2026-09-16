@@ -95,6 +95,34 @@ export const calculateNI = (income: number, rates: RateBand[]): number => {
 }
 
 /**
+ * The gross salary inside an umbrella assignment pot — the money left once
+ * the employer's NI due on that salary has been paid out of the same pot.
+ *
+ * Employer NI is charged on the salary, not on the pot the salary comes out
+ * of, so the pot has to be grossed DOWN. Applying the rate to the whole pot
+ * instead charges employer NI on the employer NI. For a band of width W
+ * charged at rate R, it takes W x (1 + R) of pot to pay W of salary, so each
+ * band is walked in pot terms and the band the pot runs out in is split:
+ *
+ *   salary = bandFloor + (pot left) / (1 + R)
+ *
+ * Any pot beyond the last band is untaxed and passes through one for one.
+ */
+export const salaryFromAssignmentPot = (pot: number, rates: RateBand[]): number => {
+  if (pot <= 0) return 0
+
+  let previousLimit = 0
+  let potConsumed = 0
+  for (const band of rates) {
+    const potForBand = (band.limit - previousLimit) * (1 + band.rate)
+    if (potConsumed + potForBand >= pot) return previousLimit + (pot - potConsumed) / (1 + band.rate)
+    potConsumed += potForBand
+    previousLimit = band.limit
+  }
+  return previousLimit + (pot - potConsumed)
+}
+
+/**
  * Corporation Tax on a company's taxable profit, with Marginal Relief between
  * the lower and upper limits.
  *

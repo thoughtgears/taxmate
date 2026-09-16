@@ -1,6 +1,16 @@
 import { type FC, useMemo, useState } from 'react'
 import type { CalculationResult, IncomeType, Location, StudentLoanPlan } from './types'
-import { calculateCorporationTax, calculateDividendTax, calculateNI, calculateStudentLoan, calculateTax, NI_RATES_EMPLOYEE, NI_RATES_EMPLOYER, PERSONAL_ALLOWANCE } from './lib/calculator'
+import {
+  calculateCorporationTax,
+  calculateDividendTax,
+  calculateNI,
+  calculateStudentLoan,
+  calculateTax,
+  NI_RATES_EMPLOYEE,
+  NI_RATES_EMPLOYER,
+  PERSONAL_ALLOWANCE,
+  salaryFromAssignmentPot,
+} from './lib/calculator'
 import { ResultsTable } from './components/ResultsTable'
 
 const App: FC = () => {
@@ -42,8 +52,11 @@ const App: FC = () => {
   const insideIR35Calculation: CalculationResult = useMemo(() => {
     const annualUmbrellaFee = umbrellaFee * 12
     const incomeAfterUmbrella = grossIncome - annualUmbrellaFee
-    const employerNIDeduction = employerNI ? calculateNI(incomeAfterUmbrella, NI_RATES_EMPLOYER) : 0
-    const taxableIncome = incomeAfterUmbrella - employerNIDeduction
+    // Employer NI comes out of the same pot as the salary, so the pot is
+    // grossed down: charging the rate on the whole pot would levy employer NI
+    // on the employer NI itself.
+    const taxableIncome = employerNI ? salaryFromAssignmentPot(incomeAfterUmbrella, NI_RATES_EMPLOYER) : incomeAfterUmbrella
+    const employerNIDeduction = incomeAfterUmbrella - taxableIncome
     const pensionDeduction = taxableIncome * (pensionContribution / 100)
     const finalTaxable = taxableIncome - pensionDeduction
     const tax = calculateTax(finalTaxable, location)

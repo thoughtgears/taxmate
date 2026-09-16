@@ -1,30 +1,58 @@
 import type { Location, RateBand, StudentLoanPlan } from '../../types'
-import { STUDENT_LOAN_RATES, TAX_RATES } from './constants'
+import { PERSONAL_ALLOWANCE, PERSONAL_ALLOWANCE_TAPER_RATE, PERSONAL_ALLOWANCE_TAPER_THRESHOLD, STUDENT_LOAN_RATES, TAX_RATES } from './constants'
 
-export const calculateTax = (taxableIncome: number, location: Location): number => {
-  // Clone each band shallowly rather than via JSON.parse(JSON.stringify(...)):
-  // JSON has no representation for Infinity, so a JSON round-trip silently
-  // turns the top band's `limit: Infinity` into `null`, which zeroes out the
-  // top rate band entirely for high earners (see calculations.test.ts).
-  const taxRates: RateBand[] = TAX_RATES[location].map((band) => ({ ...band }))
-  let tax: number = 0
+/**
+ * The personal allowance actually available at a given total income: £1 of
+ * allowance is withdrawn for every £2 of income above £100,000, so the
+ * allowance is nil from £125,140 upwards.
+ */
+export const personalAllowance = (totalIncome: number): number => {
+  const excess = Math.max(0, totalIncome - PERSONAL_ALLOWANCE_TAPER_THRESHOLD)
+  return Math.max(0, PERSONAL_ALLOWANCE - excess / PERSONAL_ALLOWANCE_TAPER_RATE)
+}
 
-  if (taxableIncome > 100000) {
-    const reduction = (taxableIncome - 100000) / 2
-    taxRates[0].limit = Math.max(0, taxRates[0].limit - reduction)
+/**
+ * The statutory TAXABLE-income ceiling of band `i` — income after the
+ * personal allowance, which is what the rates are legally applied to.
+ *
+ * gov.uk and mygov.scot publish band ceilings as total income assuming a full
+ * personal allowance (£50,270 = £12,570 allowance + the £37,700 basic rate
+ * band), so subtracting the standard allowance recovers the statutory limit.
+ * The additional/top-rate threshold — the second-from-last band ceiling,
+ * £125,140 — is the exception: it is published at a NIL allowance, because it
+ * is the income at which the taper finishes, so it is already a
+ * taxable-income figure and must not have the allowance subtracted from it.
+ *
+ * Getting this wrong is not cosmetic. If the published ceilings are treated
+ * as fixed points of total income, a tapered allowance silently WIDENS the
+ * basic rate band, and the well-documented 60% effective marginal rate
+ * between £100,000 and £125,140 comes out as 50%.
+ *
+ * The open-ended top band keeps its Infinity (Infinity minus the allowance is
+ * still Infinity), and band 0 collapses to 0 — the allowance has no width in
+ * taxable-income space, which is the point.
+ */
+const taxableLimit = (bands: RateBand[], i: number): number => (i === bands.length - 2 ? bands[i].limit : bands[i].limit - bands[0].limit)
+
+export const calculateTax = (income: number, location: Location): number => {
+  // Read the bands directly, never through a clone. A JSON round-trip has no
+  // representation for Infinity and silently turns the top band's limit into
+  // null, which stops high earners being taxed on the excess at all (see
+  // calculateTax.test.ts).
+  const bands = TAX_RATES[location]
+  let remaining = Math.max(0, income - personalAllowance(income))
+  let tax = 0
+  let previousLimit = 0
+
+  for (let i = 1; i < bands.length; i++) {
+    if (remaining <= 0) break
+    const limit = taxableLimit(bands, i)
+    const taxableInBand = Math.min(remaining, limit - previousLimit)
+    tax += taxableInBand * bands[i].rate
+    remaining -= taxableInBand
+    previousLimit = limit
   }
 
-  let remainingIncome = taxableIncome
-  for (let i = 0; i < taxRates.length; i++) {
-    const previousBandLimit = i === 0 ? 0 : taxRates[i - 1].limit
-    const taxableInBand = Math.max(0, Math.min(remainingIncome, taxRates[i].limit - previousBandLimit))
-
-    if (taxableInBand > 0) {
-      tax += taxableInBand * taxRates[i].rate
-      remainingIncome -= taxableInBand
-    }
-    if (remainingIncome <= 0) break
-  }
   return tax
 }
 

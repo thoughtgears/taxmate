@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calculateTax, TAX_RATES } from '../../../src/lib/calculator'
+import { calculateTax, PERSONAL_ALLOWANCE_TAPER_RATE, PERSONAL_ALLOWANCE_TAPER_THRESHOLD, TAX_RATES } from '../../../src/lib/calculator'
 import type { Location, RateBand } from '../../../src/types'
 
 /**
@@ -9,24 +9,35 @@ import type { Location, RateBand } from '../../../src/types'
  * suite immune to HMRC rate updates: bump a number in `constants.ts` and
  * every test below re-derives its expectation from the new value.
  *
+ * It works the way the legislation does — in TAXABLE income, i.e. income
+ * after the personal allowance — rather than in the total-income figures
+ * gov.uk publishes. The two only coincide while the allowance is untouched.
+ * Above £100,000 the allowance tapers and the published band ceilings move
+ * down with it; the additional/top-rate threshold (£125,140) is the one
+ * published figure that is already stated at a nil allowance, so it stays
+ * put. Treating all of them as fixed understates tax for every £100k+ earner.
+ *
  * A small number of GOLDEN VALUE cases further down assert literal £
  * amounts. Those are deliberately not derived — they exist to fail loudly
  * if a rate or threshold changes, and are labelled with the tax year they
  * assume.
  */
-const expectedTax = (taxableIncome: number, bands: RateBand[]): number => {
-  const working = bands.map((band) => ({ ...band }))
-  if (taxableIncome > 100000) {
-    const reduction = (taxableIncome - 100000) / 2
-    working[0].limit = Math.max(0, working[0].limit - reduction)
-  }
+const expectedTax = (income: number, bands: RateBand[]): number => {
+  const standardAllowance = bands[0].limit
+  const taperedAway = Math.max(0, income - PERSONAL_ALLOWANCE_TAPER_THRESHOLD) / PERSONAL_ALLOWANCE_TAPER_RATE
+  const allowance = Math.max(0, standardAllowance - taperedAway)
+
+  // Statutory taxable-income ceilings: published ceilings are quoted
+  // inclusive of a full allowance, except the second-from-last (the
+  // additional/top-rate threshold), which is quoted at a nil allowance.
+  const limits = bands.map((band, i) => (i === bands.length - 2 ? band.limit : band.limit - standardAllowance))
+
+  let taxable = Math.max(0, income - allowance)
   let tax = 0
-  let previousLimit = 0
-  for (const band of working) {
-    const bandTop = Math.max(previousLimit, band.limit)
-    const taxableInBand = Math.max(0, Math.min(taxableIncome, bandTop) - previousLimit)
-    tax += taxableInBand * band.rate
-    previousLimit = bandTop
+  for (let i = 1; i < bands.length; i++) {
+    const taxableInBand = Math.max(0, Math.min(taxable, limits[i] - limits[i - 1]))
+    tax += taxableInBand * bands[i].rate
+    taxable -= taxableInBand
   }
   return tax
 }
@@ -143,10 +154,65 @@ describe('calculateTax — golden values (2026/27, England)', () => {
     expect(calculateTax(30000, 'england')).toBeCloseTo(3486, 6)
   })
 
-  it('£200,000 taxable income → £73,689 tax (personal allowance fully withdrawn)', () => {
-    // £0–£50,270 @ 20% = £10,054; £50,270–£125,140 @ 40% = £29,948;
-    // £125,140–£200,000 @ 45% = £33,687. Total £73,689.
-    expect(calculateTax(200000, 'england')).toBeCloseTo(73689, 6)
+  it('£200,000 taxable income → £76,203 tax (personal allowance fully withdrawn)', () => {
+    // Allowance nil, so taxable income is the full £200,000.
+    // £37,700 @ 20% = £7,540; £37,700–£125,140 (£87,440) @ 40% = £34,976;
+    // £125,140–£200,000 (£74,860) @ 45% = £33,687. Total £76,203.
+    expect(calculateTax(200000, 'england')).toBeCloseTo(76203, 6)
+  })
+
+  it('£150,000 taxable income → £53,703 tax', () => {
+    // £37,700 @ 20% = £7,540; £87,440 @ 40% = £34,976;
+    // £24,860 @ 45% = £11,187. Total £53,703.
+    expect(calculateTax(150000, 'england')).toBeCloseTo(53703, 6)
+  })
+
+  it('£120,000 taxable income → £39,432 tax (allowance part-tapered)', () => {
+    // Allowance £12,570 − £10,000 = £2,570, so taxable income is £117,430.
+    // £37,700 @ 20% = £7,540; £79,730 @ 40% = £31,892. Total £39,432.
+    expect(calculateTax(120000, 'england')).toBeCloseTo(39432, 6)
+  })
+})
+
+describe('calculateTax — personal allowance taper marginal rates', () => {
+  const marginalRateAt = (income: number, location: Location): number => calculateTax(income + 1, location) - calculateTax(income, location)
+
+  it('England: 40% just below the £100,000 taper threshold', () => {
+    expect(marginalRateAt(99999, 'england')).toBeCloseTo(0.4, 6)
+  })
+
+  it('England: 60% inside the taper zone — the "£100k trap"', () => {
+    // Each extra £1 is taxed at 40% AND withdraws 50p of allowance, which is
+    // itself then taxed at 40%: 40% + 20% = 60%. This is the single most
+    // documented feature of UK income tax above £100,000, and the check that
+    // catches the band ceilings failing to move with the allowance.
+    expect(marginalRateAt(110000, 'england')).toBeCloseTo(0.6, 6)
+    expect(marginalRateAt(100000, 'england')).toBeCloseTo(0.6, 6)
+    expect(marginalRateAt(125139, 'england')).toBeCloseTo(0.6, 6)
+  })
+
+  it('England: back to 45% once the allowance is fully withdrawn', () => {
+    expect(marginalRateAt(125140, 'england')).toBeCloseTo(0.45, 6)
+    expect(marginalRateAt(200000, 'england')).toBeCloseTo(0.45, 6)
+  })
+
+  it('Scotland: 67.5% inside the taper zone (45% Advanced Rate plus the withdrawn allowance)', () => {
+    expect(marginalRateAt(110000, 'scotland')).toBeCloseTo(0.675, 6)
+  })
+
+  it('Scotland: 48% once the allowance is fully withdrawn', () => {
+    expect(marginalRateAt(130000, 'scotland')).toBeCloseTo(0.48, 6)
+  })
+})
+
+describe('calculateTax — golden values (2026/27, taper zone, Scotland)', () => {
+  it('£150,000 → £59,634.35 tax', () => {
+    // Allowance nil, so taxable income is the full £150,000.
+    // £3,967 @ 19% = £753.73; £12,989 @ 20% = £2,597.80;
+    // £14,136 @ 21% = £2,968.56; £31,338 @ 42% = £13,161.96;
+    // £62,430–£125,140 (£62,710) @ 45% = £28,219.50;
+    // £24,860 @ 48% = £11,932.80. Total £59,634.35.
+    expect(calculateTax(150000, 'scotland')).toBeCloseTo(59634.35, 6)
   })
 })
 

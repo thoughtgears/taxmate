@@ -48,11 +48,12 @@ export const TAX_RATES: Record<Location, RateBand[]> = {
   ],
   scotland: [
     { band: 'Personal Allowance', limit: PERSONAL_ALLOWANCE, rate: 0 },
-    { band: 'Starter Rate', limit: 14732, rate: 0.19 },
-    { band: 'Basic Rate', limit: 25688, rate: 0.2 },
+    { band: 'Starter Rate', limit: 16537, rate: 0.19 },
+    { band: 'Basic Rate', limit: 29526, rate: 0.2 },
     { band: 'Intermediate Rate', limit: 43662, rate: 0.21 },
-    { band: 'Higher Rate', limit: 125140, rate: 0.42 },
-    { band: 'Top Rate', limit: Infinity, rate: 0.47 },
+    { band: 'Higher Rate', limit: 75000, rate: 0.42 },
+    { band: 'Advanced Rate', limit: 125140, rate: 0.45 },
+    { band: 'Top Rate', limit: Infinity, rate: 0.48 },
   ],
 }
 

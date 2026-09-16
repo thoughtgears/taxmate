@@ -149,3 +149,38 @@ describe('calculateTax — golden values (2026/27, England)', () => {
     expect(calculateTax(200000, 'england')).toBeCloseTo(73689, 6)
   })
 })
+
+describe('calculateTax — golden values (2026/27, Scotland)', () => {
+  // Scottish bands as published on mygov.scot and checked on 2026-09-16:
+  // PA £12,570 / starter 19% to £16,537 / basic 20% to £29,526 /
+  // intermediate 21% to £43,662 / higher 42% to £75,000 / advanced 45% to
+  // £125,140 / top 48% above. Band widths therefore run £3,967 starter,
+  // £12,989 basic, £14,136 intermediate, £31,338 higher.
+
+  it('£30,000 → £3,451.07 tax', () => {
+    // £3,967 @ 19% = £753.73; £12,989 @ 20% = £2,597.80;
+    // £474 @ 21% = £99.54. Total £3,451.07.
+    expect(calculateTax(30000, 'scotland')).toBeCloseTo(3451.07, 6)
+  })
+
+  it('£80,000 → £21,732.05 tax (£5,000 inside the Advanced Rate band)', () => {
+    // £3,967 @ 19% = £753.73; £12,989 @ 20% = £2,597.80;
+    // £14,136 @ 21% = £2,968.56; £31,338 @ 42% = £13,161.96;
+    // £5,000 @ 45% = £2,250.00. Total £21,732.05.
+    expect(calculateTax(80000, 'scotland')).toBeCloseTo(21732.05, 6)
+  })
+
+  it('charges 45%, not 42%, on the pound after the Advanced Rate threshold', () => {
+    // Regression guard for the missing Advanced Rate band: before it was
+    // added, income just above £75,000 was charged at the Higher Rate.
+    const advancedThreshold = 75000
+    const marginalPound = calculateTax(advancedThreshold + 1, 'scotland') - calculateTax(advancedThreshold, 'scotland')
+    expect(marginalPound).toBeCloseTo(0.45, 6)
+  })
+
+  it('charges 48% on the pound after the Top Rate threshold', () => {
+    const topThreshold = 125140
+    const marginalPound = calculateTax(topThreshold + 1, 'scotland') - calculateTax(topThreshold, 'scotland')
+    expect(marginalPound).toBeCloseTo(0.48, 6)
+  })
+})

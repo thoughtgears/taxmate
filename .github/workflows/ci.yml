@@ -1,0 +1,35 @@
+name: CI
+
+# Push-to-main only, never pull_request (org rule: thoughtgears-claude
+# decisions/ci-scope-local-gates.md) - a solo maintainer self-merging makes
+# a PR run and the following push run duplicate the same signal.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run test:coverage
+
+      - run: npm run build

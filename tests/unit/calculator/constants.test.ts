@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CORPORATION_TAX_MARGINAL_RELIEF_FRACTION,
   CORPORATION_TAX_RATE,
   CORPORATION_TAX_RATE_HIGH,
   CORPORATION_TAX_THRESHOLD,
@@ -8,6 +9,9 @@ import {
   DIVIDEND_TAX_RATES,
   NI_RATES_EMPLOYEE,
   NI_RATES_EMPLOYER,
+  PERSONAL_ALLOWANCE,
+  PERSONAL_ALLOWANCE_TAPER_RATE,
+  PERSONAL_ALLOWANCE_TAPER_THRESHOLD,
   STUDENT_LOAN_RATES,
   TAX_RATES,
 } from '../../../src/lib/calculator'
@@ -54,6 +58,35 @@ describe('TAX_RATES', () => {
   it.each<Location>(['england', 'scotland'])('%s starts with a 0%% personal allowance band', (location) => {
     expect(TAX_RATES[location][0].rate).toBe(0)
   })
+
+  it.each<Location>(['england', 'scotland'])('%s opens with the UK-wide personal allowance', (location) => {
+    expect(TAX_RATES[location][0].limit).toBe(PERSONAL_ALLOWANCE)
+  })
+
+  it.each<Location>(['england', 'scotland'])('%s has at least three bands (allowance, at least one middle band, open-ended top band)', (location) => {
+    // calculateTax treats the second-from-last limit as the
+    // additional/top-rate threshold — the one figure gov.uk publishes at a
+    // nil personal allowance. With fewer than three bands that index would
+    // collide with the personal allowance band and the taper would misapply.
+    expect(TAX_RATES[location].length).toBeGreaterThanOrEqual(3)
+  })
+
+  it.each<Location>(['england', 'scotland'])('%s puts the additional/top-rate threshold at the taper end point', (location) => {
+    // The allowance is withdrawn completely at
+    // PERSONAL_ALLOWANCE_TAPER_THRESHOLD + 2 x PERSONAL_ALLOWANCE, and both
+    // the UK additional rate and the Scottish top rate start there.
+    const bands = TAX_RATES[location]
+    const topThreshold = bands[bands.length - 2].limit
+    expect(topThreshold).toBe(PERSONAL_ALLOWANCE_TAPER_THRESHOLD + PERSONAL_ALLOWANCE * PERSONAL_ALLOWANCE_TAPER_RATE)
+  })
+})
+
+describe('Personal allowance constants', () => {
+  it('has a positive allowance and a taper that starts above it', () => {
+    expect(PERSONAL_ALLOWANCE).toBeGreaterThan(0)
+    expect(PERSONAL_ALLOWANCE_TAPER_THRESHOLD).toBeGreaterThan(PERSONAL_ALLOWANCE)
+    expect(PERSONAL_ALLOWANCE_TAPER_RATE).toBeGreaterThan(0)
+  })
 })
 
 describe('NI_RATES_EMPLOYEE', () => {
@@ -89,6 +122,16 @@ describe('Corporation Tax constants', () => {
     expect(CORPORATION_TAX_RATE).toBeLessThan(1)
     expect(CORPORATION_TAX_RATE_HIGH).toBeGreaterThan(CORPORATION_TAX_RATE)
     expect(CORPORATION_TAX_RATE_HIGH).toBeLessThan(1)
+  })
+
+  it('has a marginal relief fraction that makes the two rates meet at the lower limit', () => {
+    // Marginal relief exists to bridge the small-profits rate and the main
+    // rate smoothly. At the lower limit the relieved main-rate charge must
+    // equal the small-profits charge, or there is a cliff edge in the bill.
+    expect(CORPORATION_TAX_MARGINAL_RELIEF_FRACTION).toBeGreaterThan(0)
+    expect(CORPORATION_TAX_MARGINAL_RELIEF_FRACTION).toBeLessThan(1)
+    const relievedAtLowerLimit = CORPORATION_TAX_THRESHOLD * CORPORATION_TAX_RATE_HIGH - (CORPORATION_TAX_THRESHOLD_HIGH - CORPORATION_TAX_THRESHOLD) * CORPORATION_TAX_MARGINAL_RELIEF_FRACTION
+    expect(relievedAtLowerLimit).toBeCloseTo(CORPORATION_TAX_THRESHOLD * CORPORATION_TAX_RATE, 6)
   })
 })
 

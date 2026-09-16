@@ -2,7 +2,11 @@ import type { Location, RateBand, StudentLoanPlan } from '../../types'
 import { STUDENT_LOAN_RATES, TAX_RATES } from './constants'
 
 export const calculateTax = (taxableIncome: number, location: Location): number => {
-  const taxRates: RateBand[] = JSON.parse(JSON.stringify(TAX_RATES[location]))
+  // Clone each band shallowly rather than via JSON.parse(JSON.stringify(...)):
+  // JSON has no representation for Infinity, so a JSON round-trip silently
+  // turns the top band's `limit: Infinity` into `null`, which zeroes out the
+  // top rate band entirely for high earners (see calculations.test.ts).
+  const taxRates: RateBand[] = TAX_RATES[location].map((band) => ({ ...band }))
   let tax: number = 0
 
   if (taxableIncome > 100000) {

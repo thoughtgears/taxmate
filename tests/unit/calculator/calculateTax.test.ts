@@ -250,3 +250,20 @@ describe('calculateTax — golden values (2026/27, Scotland)', () => {
     expect(marginalPound).toBeCloseTo(0.48, 6)
   })
 })
+
+describe('calculateTax — taper measured against a separate total income', () => {
+  it('defaults the taper base to the income being taxed', () => {
+    expect(calculateTax(120000, 'england', 120000)).toBeCloseTo(calculateTax(120000, 'england'), 6)
+  })
+
+  it('taxes part of a director salary once dividends taper the allowance away', () => {
+    // £12,570 salary plus £95,000 dividends is £107,570 of total income, so
+    // the allowance drops to £12,570 - £3,785 = £8,785 and £3,785 of the
+    // salary becomes taxable: £3,785 @ 20% = £757.00.
+    expect(calculateTax(12570, 'england', 107570)).toBeCloseTo(757, 6)
+  })
+
+  it('leaves the salary untaxed while the combined income stays under the taper threshold', () => {
+    expect(calculateTax(12570, 'england', 90000)).toBe(0)
+  })
+})

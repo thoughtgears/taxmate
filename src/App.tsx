@@ -1,19 +1,6 @@
 import { type FC, useMemo, useState } from 'react'
 import type { CalculationResult, IncomeType, Location, StudentLoanPlan } from './types'
-import {
-  calculateNI,
-  calculateStudentLoan,
-  calculateTax,
-  CORPORATION_TAX_RATE,
-  CORPORATION_TAX_RATE_HIGH,
-  CORPORATION_TAX_THRESHOLD,
-  CORPORATION_TAX_THRESHOLD_HIGH,
-  DIVIDEND_ALLOWANCE,
-  DIVIDEND_TAX_RATES,
-  NI_RATES_EMPLOYEE,
-  NI_RATES_EMPLOYER,
-  TAX_RATES,
-} from './lib/calculator'
+import { calculateCorporationTax, calculateDividendTax, calculateNI, calculateStudentLoan, calculateTax, NI_RATES_EMPLOYEE, NI_RATES_EMPLOYER, PERSONAL_ALLOWANCE } from './lib/calculator'
 import { ResultsTable } from './components/ResultsTable'
 
 const App: FC = () => {
@@ -76,41 +63,20 @@ const App: FC = () => {
   }, [grossIncome, pensionContribution, studentLoan, location, employerNI, umbrellaFee])
 
   const outsideIR35Calculation: CalculationResult = useMemo(() => {
-    const salary = 12570
-    const remainingForCorpTax = grossIncome - businessExpenses - salary
-    let corporationTax
-    if (remainingForCorpTax <= CORPORATION_TAX_THRESHOLD) {
-      corporationTax = remainingForCorpTax * CORPORATION_TAX_RATE
-    } else if (remainingForCorpTax <= CORPORATION_TAX_THRESHOLD_HIGH) {
-      const marginalRelief = (CORPORATION_TAX_THRESHOLD_HIGH - remainingForCorpTax) * (3 / 200)
-      corporationTax = remainingForCorpTax * CORPORATION_TAX_RATE_HIGH - marginalRelief
-    } else {
-      corporationTax = remainingForCorpTax * CORPORATION_TAX_RATE_HIGH
-    }
-    const dividend = Math.max(0, remainingForCorpTax - corporationTax)
-    const dividendTaxable = Math.max(0, dividend - DIVIDEND_ALLOWANCE)
-    const taxBands = TAX_RATES[location]
-    let dividendTax = 0
-    let remainingDividend = dividendTaxable
-    const basicRateLimit = taxBands[1].limit - salary
-    if (remainingDividend > 0) {
-      const inBasic = Math.min(remainingDividend, basicRateLimit)
-      dividendTax += inBasic * DIVIDEND_TAX_RATES.basic
-      remainingDividend -= inBasic
-    }
-    if (remainingDividend > 0) {
-      const higherRateLimit = taxBands[2].limit - taxBands[1].limit
-      const inHigher = Math.min(remainingDividend, higherRateLimit)
-      dividendTax += inHigher * DIVIDEND_TAX_RATES.higher
-      remainingDividend -= inHigher
-    }
-    if (remainingDividend > 0) {
-      dividendTax += remainingDividend * DIVIDEND_TAX_RATES.additional
-    }
-    const net = salary + dividend - dividendTax
+    // The usual director's arrangement: a salary equal to the personal
+    // allowance, with the rest of the profit taken as dividends.
+    const salary = PERSONAL_ALLOWANCE
+    const profit = grossIncome - businessExpenses - salary
+    const corporationTax = calculateCorporationTax(profit)
+    const dividend = Math.max(0, profit - corporationTax)
+    // Salary and dividends share one personal allowance, and their combined
+    // total is what tapers it, so the salary is not always tax free.
+    const tax = calculateTax(salary, location, salary + dividend)
+    const dividendTax = calculateDividendTax(dividend, salary)
+    const net = salary + dividend - tax - dividendTax
     return {
       gross: grossIncome,
-      tax: 0,
+      tax,
       ni: 0,
       studentLoan: 0,
       pension: 0,

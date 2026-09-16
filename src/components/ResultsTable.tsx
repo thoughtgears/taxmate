@@ -79,6 +79,12 @@ export const ResultsTable: FC<ResultsTableProps> = ({ title, data, type, employe
               <span>Corporation Tax:</span>
               <span>- £{data.corporationTax?.toFixed(2)}</span>
             </div>
+            {data.tax > 0 && (
+              <div className="flex justify-between text-red-600">
+                <span>Income Tax (Salary):</span>
+                <span>- £{data.tax.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-[#1E56A0]">
               <span>Dividends:</span>
               <span>£{data.dividend?.toFixed(2)}</span>

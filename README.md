@@ -15,18 +15,28 @@ accounting one — see [Limitations](#limitations-and-disclaimer) below.
 ## Tax year
 
 The calculator is built around UK tax rules for **2026/27** (6 April 2026 –
-5 April 2027). The England/Wales/NI income tax bands, National Insurance
-primary threshold and upper earnings limit, Corporation Tax rates and
-thresholds, and the dividend allowance in `src/lib/calculator/constants.ts`
-were checked against gov.uk on 2026-09-16 and are current for 2026/27.
+5 April 2027), and for Corporation Tax the financial year beginning 1 April
+2026. Every constant in `src/lib/calculator/constants.ts` — income tax bands
+for both England/Wales/NI and Scotland, employee and employer National
+Insurance, student loan thresholds, dividend rates and allowance, and
+Corporation Tax rates, limits and marginal relief fraction — was checked
+against its primary source on **2026-09-16** and is current for that year.
 
-**Some constants in that file are known to be stale** — most notably the
-Scottish income tax bands (missing the Advanced Rate band entirely) and the
-employer NI secondary threshold/rate. These are flagged for the maintainer
-rather than silently changed; see the code comments in `constants.ts` and
-the project history for the sourced comparison. Check the constants against
-[gov.uk](https://www.gov.uk/income-tax-rates) before relying on this tool
-for a tax year other than the one it was last checked against.
+Sources, all linked from the header comment in `constants.ts`:
+
+- [Income tax rates and Personal Allowances](https://www.gov.uk/income-tax-rates)
+- [Scottish Income Tax rates](https://www.mygov.scot/scottish-income-tax/current-income-tax-rates)
+- [Rates and thresholds for employers 2026 to 2027](https://www.gov.uk/guidance/rates-and-thresholds-for-employers-2026-to-2027)
+- [Tax on dividends](https://www.gov.uk/tax-on-dividends)
+- [Repaying your student loan](https://www.gov.uk/repaying-your-student-loan/what-you-pay)
+- [Corporation Tax rates and reliefs](https://www.gov.uk/corporation-tax-rates)
+
+Re-check these before relying on the tool for any later tax year. Band
+`limit` values are written as gov.uk publishes them — cumulative income
+ceilings assuming a full personal allowance — with one documented exception,
+the additional/top-rate threshold of £125,140, which gov.uk quotes at a nil
+allowance. `calculateTax` reconciles the two; see its `taxableLimit` comment
+before editing either.
 
 ## Running locally
 
@@ -50,9 +60,11 @@ npm run preview    # preview a production build locally
 The pure calculation logic in `src/lib/calculator/` — the only part of this
 codebase that decides how much tax someone pays — is covered by a full
 vitest suite, enforced at 100% statement/branch/function/line coverage for
-that directory. UI components (`App.tsx`, `ResultsTable.tsx`) are
-intentionally untested; they're presentation, eyeballed by the maintainer
-rather than unit tested.
+that directory. Every decision about how much tax is due lives in that
+directory — including Corporation Tax, marginal relief and dividend tax, all
+of which were moved out of `App.tsx` so the gate can see them. UI components
+(`App.tsx`, `ResultsTable.tsx`) are intentionally untested; they're
+presentation, eyeballed by the maintainer rather than unit tested.
 
 ```bash
 npm run test            # watch mode
@@ -69,6 +81,13 @@ a flat pension percentage, benefits in kind, the High Income Child Benefit
 Charge, multiple income sources, VAT (including the Flat Rate Scheme for
 limited companies), employment allowance, or any tax year other than the
 one described above. Figures are estimates for comparison purposes only.
+
+Two omissions worth naming, because they affect the limited-company
+comparison specifically: student loan repayments are not charged on the
+outside-IR35 route at all, although dividends do attract them through Self
+Assessment; and the outside-IR35 route assumes a director's salary fixed at
+the personal allowance with no employer NI or employment allowance.
+
 Get advice from a qualified accountant before making a decision based on
 these numbers.
 
